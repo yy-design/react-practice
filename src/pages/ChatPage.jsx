@@ -53,15 +53,17 @@ function ChatPage() {
     <div className="app-container">
       <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-logo">
-          <div className="logo-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(200,180,255,0.8)' }}>
-              <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
-              <path d="M16 14H8a6 6 0 0 0-6 6v1h20v-1a6 6 0 0 0-6-6z" />
-              <circle cx="9" cy="7" r="0.5" fill="currentColor" />
-              <circle cx="15" cy="7" r="0.5" fill="currentColor" />
+          <div className="logo-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" />
+              <path d="M12 8v8" />
+              <path d="m8.5 10 3.5 2 3.5-2" />
             </svg>
           </div>
-          <h1 className="logo-text">Nexus AI</h1>
+          <div className="logo-copy">
+            <h1 className="logo-text">Nexus AI</h1>
+            <span className="logo-subtitle">Executive Desk</span>
+          </div>
         </div>
 
         <button className="new-chat-btn" onClick={createNewConversation}>
@@ -91,7 +93,7 @@ function ChatPage() {
         <div className="sidebar-footer">
           <div className="user-profile">
             <div className="user-avatar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'rgba(200,180,255,0.7)' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
@@ -119,6 +121,7 @@ function ChatPage() {
       <ChatView
         key={activeConversationId}
         conversationId={activeConversationId}
+        conversationTitle={activeConversation?.title || '新的聊天'}
         initialMessages={activeConversation?.messages || []}
         onMessagesChange={handleSaveMessages}
       />

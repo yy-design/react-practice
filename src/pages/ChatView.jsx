@@ -39,7 +39,7 @@ function LoaderIcon() {
   )
 }
 
-function ChatView({ conversationId, initialMessages, onMessagesChange }) {
+function ChatView({ conversationId, conversationTitle, initialMessages, onMessagesChange }) {
   const [input, setInput] = useState('')
   const { messages, sendMessage, status, error, stop } = useChat({
     id: String(conversationId),
@@ -48,11 +48,14 @@ function ChatView({ conversationId, initialMessages, onMessagesChange }) {
 
   const messagesRef = useRef(null)
   const stopRef = useRef(stop)
-  stopRef.current = stop
   const isFirstRender = useRef(true)
   const lastSavedRef = useRef('')
 
   const isLoading = status === 'submitted' || status === 'streaming'
+
+  useEffect(() => {
+    stopRef.current = stop
+  }, [stop])
 
   // 首次渲染：绘制前直接设置 scrollTop，无任何可见滚动
   useLayoutEffect(() => {
@@ -107,7 +110,26 @@ function ChatView({ conversationId, initialMessages, onMessagesChange }) {
   return (
     <main className="chat-page">
       <section className="chat-card">
+        <header className="workspace-header">
+          <div>
+            <p className="workspace-kicker">AI Workbench</p>
+            <h2 className="workspace-title">{conversationTitle}</h2>
+          </div>
+          <div className="workspace-status" aria-live="polite">
+            <span className={`status-dot ${isLoading ? 'active' : ''}`} />
+            <span>{isLoading ? 'Streaming' : 'Ready'}</span>
+          </div>
+        </header>
+
         <div className="chat-messages" ref={messagesRef}>
+          {messages.length === 0 && !error && (
+            <div className="empty-state">
+              <p className="empty-eyebrow">Start a focused session</p>
+              <h3>Ask, refine, and present your work from one clean desk.</h3>
+              <p>Try asking for a summary, a draft, or a sharper way to explain an idea.</p>
+            </div>
+          )}
+
           {messages.map((message, index) => {
             const isStreamingBubble =
               isLoading && message.role === 'assistant' && index === messages.length - 1
@@ -116,6 +138,9 @@ function ChatView({ conversationId, initialMessages, onMessagesChange }) {
                 key={message.id}
                 className={`message-row ${message.role === 'user' ? 'user' : 'bot'}`}
               >
+                <div className="message-meta">
+                  {message.role === 'user' ? 'You' : 'Nexus AI'}
+                </div>
                 <div
                   className={`message-bubble md-reply${isStreamingBubble ? ' streaming' : ''}`}
                 >
@@ -132,7 +157,7 @@ function ChatView({ conversationId, initialMessages, onMessagesChange }) {
           })}
           {error && (
             <div className="message-row bot">
-              <div className="message-bubble">
+              <div className="error-bubble" role="alert">
                 {error.message || '请求失败，请稍后重试'}
               </div>
             </div>
@@ -143,7 +168,7 @@ function ChatView({ conversationId, initialMessages, onMessagesChange }) {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isLoading ? '' : '输入消息，按 Enter 发送'}
+            placeholder={isLoading ? '' : 'Ask Nexus AI anything...'}
             rows={1}
             disabled={isLoading}
             onKeyDown={(e) => {
