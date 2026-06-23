@@ -1,50 +1,124 @@
-import { useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import ChatView from './ChatView'
 import './ChatPage.css'
 
-function getConversationTitle(msgs) {
-  if (!msgs || msgs.length === 0) return '新的聊天'
-  const userMsg = msgs.find((m) => m.role === 'user')
-  return userMsg ? userMsg.text.substring(0, 20) + '...' : '新的聊天'
-}
-
 function ChatPage() {
-  const [conversations, setConversations] = useState([
-    { id: 1, title: '新的聊天', active: true, messages: [] },
-  ])
-  const [activeConversationId, setActiveConversationId] = useState(1)
+  const [conversations, setConversations] = useState([])
+  const [activeConversationId, setActiveConversationId] = useState(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [isBooting, setIsBooting] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [pageError, setPageError] = useState('')
 
-  const handleSaveMessages = useCallback((conversationId, messages) => {
-    setConversations((prev) =>
-      prev.map((conv) =>
-        conv.id === conversationId
-          ? { ...conv, messages, title: getConversationTitle(messages) }
-          : conv,
-      ),
-    )
+  const loadConversations = useCallback(async ({ ensureConversation = false } = {}) => {
+    const response = await fetch('/api/conversations')
+    if (!response.ok) throw new Error('会话列表加载失败')
+
+    const list = await response.json()
+    if (list.length === 0 && ensureConversation) {
+      const created = await createConversationRequest()
+      setConversations([created])
+      setActiveConversationId(created.id)
+      return [created]
+    }
+
+    setConversations(list)
+    setActiveConversationId((currentId) => {
+      if (currentId && list.some((conversation) => conversation.id === currentId)) {
+        return currentId
+      }
+      return list[0]?.id || null
+    })
+    return list
   }, [])
 
-  const createNewConversation = () => {
-    const newId = Date.now()
-    setConversations((prev) =>
-      prev
-        .map((conv) => ({ ...conv, active: false }))
-        .concat({
-          id: newId,
-          title: '新的聊天',
-          active: true,
-          messages: [],
-        }),
-    )
-    setActiveConversationId(newId)
+  const refreshConversations = useCallback(async () => {
+    try {
+      await loadConversations()
+    } catch (error) {
+      setPageError(error.message || '会话列表刷新失败')
+    }
+  }, [loadConversations])
+
+  useEffect(() => {
+    let ignore = false
+
+    async function boot() {
+      try {
+        setPageError('')
+        const response = await fetch('/api/conversations')
+        if (!response.ok) throw new Error('会话列表加载失败')
+        let list = await response.json()
+
+        if (list.length === 0) {
+          list = [await createConversationRequest()]
+        }
+
+        if (!ignore) {
+          setConversations(list)
+          setActiveConversationId(list[0]?.id || null)
+        }
+      } catch (error) {
+        if (!ignore) setPageError(error.message || '服务连接失败')
+      } finally {
+        if (!ignore) setIsBooting(false)
+      }
+    }
+
+    boot()
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  const createNewConversation = async () => {
+    if (isCreating) return
+
+    try {
+      setIsCreating(true)
+      setPageError('')
+      const created = await createConversationRequest()
+      setConversations((prev) => [created, ...prev])
+      setActiveConversationId(created.id)
+    } catch (error) {
+      setPageError(error.message || '新建会话失败')
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   const switchConversation = (id) => {
-    setConversations((prev) =>
-      prev.map((conv) => ({ ...conv, active: conv.id === id })),
-    )
     setActiveConversationId(id)
+  }
+
+  const deleteConversation = async (id) => {
+    if (deletingId) return
+
+    try {
+      setDeletingId(id)
+      setPageError('')
+      const response = await fetch(`/api/conversations/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('删除会话失败')
+
+      const remaining = conversations.filter((conversation) => conversation.id !== id)
+      if (remaining.length === 0) {
+        const created = await createConversationRequest()
+        setConversations([created])
+        setActiveConversationId(created.id)
+        return
+      }
+
+      setConversations(remaining)
+      if (activeConversationId === id) {
+        setActiveConversationId(remaining[0].id)
+      }
+    } catch (error) {
+      setPageError(error.message || '删除会话失败')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId)
@@ -66,26 +140,49 @@ function ChatPage() {
           </div>
         </div>
 
-        <button className="new-chat-btn" onClick={createNewConversation}>
+        <button className="new-chat-btn" onClick={createNewConversation} disabled={isCreating}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          <span>新建会话</span>
+          <span>{isCreating ? '创建中' : '新建会话'}</span>
         </button>
 
         <nav className="conversation-list">
           <h3 className="list-title">历史会话</h3>
+          {isBooting && <div className="sidebar-state">加载会话中...</div>}
+          {!isBooting && conversations.length === 0 && (
+            <div className="sidebar-state">暂无会话</div>
+          )}
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              className={`conversation-item ${conv.active ? 'active' : ''}`}
+              role="button"
+              tabIndex={0}
+              className={`conversation-item ${conv.id === activeConversationId ? 'active' : ''}`}
               onClick={() => switchConversation(conv.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  switchConversation(conv.id)
+                }
+              }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="conv-icon">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
               <span className="conv-title">{conv.title}</span>
+              <button
+                type="button"
+                className="conversation-delete"
+                aria-label="删除会话"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  deleteConversation(conv.id)
+                }}
+              >
+                {deletingId === conv.id ? '...' : '×'}
+              </button>
             </div>
           ))}
         </nav>
@@ -122,11 +219,22 @@ function ChatPage() {
         key={activeConversationId}
         conversationId={activeConversationId}
         conversationTitle={activeConversation?.title || '新的聊天'}
-        initialMessages={activeConversation?.messages || []}
-        onMessagesChange={handleSaveMessages}
+        isBooting={isBooting}
+        pageError={pageError}
+        onRefreshConversations={refreshConversations}
       />
     </div>
   )
+}
+
+async function createConversationRequest() {
+  const response = await fetch('/api/conversations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+  if (!response.ok) throw new Error('新建会话失败')
+  return response.json()
 }
 
 export default ChatPage

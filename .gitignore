@@ -1,3 +1,5 @@
 node_modules/
 .env/
 .env.local
+dev.db
+dev.db-journal

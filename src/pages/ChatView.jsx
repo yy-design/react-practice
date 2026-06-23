@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { DefaultChatTransport } from 'ai'
 import { useChat } from '@ai-sdk/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,9 +17,9 @@ function getMessageText(message) {
 function convertToUIMessages(messages) {
   return messages.map((m) => ({
     id: m.id,
-    role: m.role === 'bot' ? 'assistant' : 'user',
-    content: m.text,
-    parts: [{ type: 'text', text: m.text }],
+    role: m.role,
+    content: m.content,
+    parts: [{ type: 'text', text: m.content }],
   }))
 }
 
@@ -39,19 +40,61 @@ function LoaderIcon() {
   )
 }
 
-function ChatView({ conversationId, conversationTitle, initialMessages, onMessagesChange }) {
+function ChatView({ conversationId, conversationTitle, isBooting, pageError, onRefreshConversations }) {
   const [input, setInput] = useState('')
-  const { messages, sendMessage, status, error, stop } = useChat({
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [messageLoadError, setMessageLoadError] = useState('')
+  const messagesRef = useRef(null)
+  const stopRef = useRef(null)
+  const isFirstRender = useRef(true)
+
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: '/api/chat',
+    body: { conversationId },
+  }), [conversationId])
+
+  const { messages, sendMessage, status, error, stop, setMessages } = useChat({
     id: String(conversationId),
-    messages: convertToUIMessages(initialMessages),
+    transport,
+    onFinish: () => {
+      onRefreshConversations()
+    },
   })
 
-  const messagesRef = useRef(null)
-  const stopRef = useRef(stop)
-  const isFirstRender = useRef(true)
-  const lastSavedRef = useRef('')
-
   const isLoading = status === 'submitted' || status === 'streaming'
+
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([])
+      return
+    }
+
+    let ignore = false
+
+    async function loadMessages() {
+      try {
+        setIsLoadingMessages(true)
+        setMessageLoadError('')
+        const response = await fetch(`/api/conversations/${conversationId}/messages`)
+        if (!response.ok) throw new Error('消息记录加载失败')
+        const history = await response.json()
+        if (!ignore) {
+          setMessages(convertToUIMessages(history))
+          isFirstRender.current = true
+        }
+      } catch (loadError) {
+        if (!ignore) setMessageLoadError(loadError.message || '消息记录加载失败')
+      } finally {
+        if (!ignore) setIsLoadingMessages(false)
+      }
+    }
+
+    loadMessages()
+
+    return () => {
+      ignore = true
+    }
+  }, [conversationId, setMessages])
 
   useEffect(() => {
     stopRef.current = stop
@@ -75,25 +118,6 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
     }
   }, [messages])
 
-  // 保存消息到父组件（仅在内容真正变化时才触发）
-  useEffect(() => {
-    if (messages.length === 0) return
-    const snapshot = JSON.stringify(messages.map((m) => ({
-      r: m.role,
-      t: getMessageText(m),
-    })))
-    if (snapshot === lastSavedRef.current) return
-    lastSavedRef.current = snapshot
-    onMessagesChange(
-      conversationId,
-      messages.map((m) => ({
-        id: m.id,
-        role: m.role === 'assistant' ? 'bot' : 'user',
-        text: getMessageText(m),
-      })),
-    )
-  }, [messages, conversationId, onMessagesChange])
-
   useEffect(() => {
     return () => {
       stopRef.current?.()
@@ -102,10 +126,12 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return
+    if (!conversationId || !input.trim() || isLoading || isLoadingMessages) return
     sendMessage({ text: input })
     setInput('')
   }
+
+  const visibleError = messageLoadError || pageError
 
   return (
     <main className="chat-page">
@@ -122,7 +148,11 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
         </header>
 
         <div className="chat-messages" ref={messagesRef}>
-          {messages.length === 0 && !error && (
+          {(isBooting || isLoadingMessages) && (
+            <div className="chat-loading-state">加载工作台...</div>
+          )}
+
+          {!isBooting && !isLoadingMessages && messages.length === 0 && !error && !visibleError && (
             <div className="empty-state">
               <p className="empty-eyebrow">Start a focused session</p>
               <h3>Ask, refine, and present your work from one clean desk.</h3>
@@ -162,6 +192,13 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
               </div>
             </div>
           )}
+          {visibleError && (
+            <div className="message-row bot">
+              <div className="error-bubble" role="alert">
+                {visibleError}
+              </div>
+            </div>
+          )}
         </div>
 
         <form className="chat-input-area" onSubmit={handleSubmit}>
@@ -170,7 +207,7 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
             onChange={(e) => setInput(e.target.value)}
             placeholder={isLoading ? '' : 'Ask Nexus AI anything...'}
             rows={1}
-            disabled={isLoading}
+            disabled={!conversationId || isLoading || isLoadingMessages}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -178,7 +215,7 @@ function ChatView({ conversationId, conversationTitle, initialMessages, onMessag
               }
             }}
           />
-          <button type="submit" disabled={isLoading}>
+          <button type="submit" disabled={!conversationId || isLoading || isLoadingMessages}>
             {isLoading ? <LoaderIcon /> : <SendIcon />}
           </button>
         </form>
