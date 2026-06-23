@@ -1,5 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import ChatView from './ChatView'
+import {
+  getNextConversationIdAfterDelete,
+  normalizeConversationTitle,
+} from './conversationActions.js'
 import './ChatPage.css'
 
 function ChatPage() {
@@ -9,6 +13,10 @@ function ChatPage() {
   const [isBooting, setIsBooting] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [savingTitleId, setSavingTitleId] = useState(null)
   const [pageError, setPageError] = useState('')
 
   const loadConversations = useCallback(async ({ ensureConversation = false } = {}) => {
@@ -90,7 +98,47 @@ function ChatPage() {
   }
 
   const switchConversation = (id) => {
+    if (editingId) return
     setActiveConversationId(id)
+  }
+
+  const startRenameConversation = (conversation) => {
+    setPendingDeleteId(null)
+    setEditingId(conversation.id)
+    setEditingTitle(conversation.title)
+    setPageError('')
+  }
+
+  const cancelRenameConversation = () => {
+    setEditingId(null)
+    setEditingTitle('')
+  }
+
+  const saveConversationTitle = async (id) => {
+    const title = normalizeConversationTitle(editingTitle)
+    if (!title || savingTitleId) return
+
+    try {
+      setSavingTitleId(id)
+      setPageError('')
+      const response = await fetch(`/api/conversations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      if (!response.ok) throw new Error('重命名失败')
+      const updated = await response.json()
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === id ? updated : conversation,
+        ),
+      )
+      cancelRenameConversation()
+    } catch (error) {
+      setPageError(error.message || '重命名失败')
+    } finally {
+      setSavingTitleId(null)
+    }
   }
 
   const deleteConversation = async (id) => {
@@ -111,9 +159,8 @@ function ChatPage() {
       }
 
       setConversations(remaining)
-      if (activeConversationId === id) {
-        setActiveConversationId(remaining[0].id)
-      }
+      setActiveConversationId(getNextConversationIdAfterDelete(conversations, id, activeConversationId))
+      setPendingDeleteId(null)
     } catch (error) {
       setPageError(error.message || '删除会话失败')
     } finally {
@@ -154,37 +201,110 @@ function ChatPage() {
           {!isBooting && conversations.length === 0 && (
             <div className="sidebar-state">暂无会话</div>
           )}
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              role="button"
-              tabIndex={0}
-              className={`conversation-item ${conv.id === activeConversationId ? 'active' : ''}`}
-              onClick={() => switchConversation(conv.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  switchConversation(conv.id)
-                }
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="conv-icon">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span className="conv-title">{conv.title}</span>
-              <button
-                type="button"
-                className="conversation-delete"
-                aria-label="删除会话"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  deleteConversation(conv.id)
-                }}
-              >
-                {deletingId === conv.id ? '...' : '×'}
-              </button>
-            </div>
-          ))}
+          {conversations.map((conv) => {
+            const isEditing = editingId === conv.id
+            const isPendingDelete = pendingDeleteId === conv.id
+            const canSaveTitle = normalizeConversationTitle(editingTitle).length > 0
+
+            return (
+              <div key={conv.id} className="conversation-shell">
+                <div
+                  role="button"
+                  tabIndex={isEditing ? -1 : 0}
+                  className={`conversation-item ${conv.id === activeConversationId ? 'active' : ''} ${isEditing ? 'editing' : ''}`}
+                  onClick={() => {
+                    if (!isEditing) switchConversation(conv.id)
+                  }}
+                  onKeyDown={(event) => {
+                    if (!isEditing && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault()
+                      switchConversation(conv.id)
+                    }
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="conv-icon">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  {isEditing ? (
+                    <form
+                      className="conversation-rename-form"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        saveConversationTitle(conv.id)
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        value={editingTitle}
+                        autoFocus
+                        onChange={(event) => setEditingTitle(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelRenameConversation()
+                          }
+                        }}
+                        aria-label="会话标题"
+                      />
+                      <button type="submit" disabled={!canSaveTitle || savingTitleId === conv.id}>
+                        保存
+                      </button>
+                      <button type="button" onClick={cancelRenameConversation}>
+                        取消
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <span className="conv-title">{conv.title}</span>
+                      <div className="conversation-actions">
+                        <button
+                          type="button"
+                          className="conversation-action"
+                          aria-label="重命名会话"
+                          title="重命名"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            startRenameConversation(conv)
+                          }}
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          className="conversation-action danger"
+                          aria-label="删除会话"
+                          title="删除"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setEditingId(null)
+                            setPendingDeleteId(conv.id)
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {isPendingDelete && (
+                  <div className="conversation-confirm" role="alert">
+                    <span>删除后无法恢复</span>
+                    <button
+                      type="button"
+                      className="confirm-danger"
+                      disabled={deletingId === conv.id}
+                      onClick={() => deleteConversation(conv.id)}
+                    >
+                      {deletingId === conv.id ? '删除中' : '确认删除'}
+                    </button>
+                    <button type="button" onClick={() => setPendingDeleteId(null)}>
+                      取消
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </nav>
 
         <div className="sidebar-footer">

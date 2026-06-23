@@ -8,7 +8,7 @@
     "server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test server/*.test.js",
+    "test": "node --test server/*.test.js src/**/*.test.js",
     "preview": "vite preview",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

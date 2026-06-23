@@ -131,7 +131,10 @@
 
 .new-chat-btn:focus-visible,
 .conversation-item:focus-visible,
-.conversation-delete:focus-visible,
+.conversation-action:focus-visible,
+.conversation-rename-form input:focus-visible,
+.conversation-rename-form button:focus-visible,
+.conversation-confirm button:focus-visible,
 .collapse-btn:focus-visible,
 .chat-input-area button:focus-visible,
 .chat-input-area textarea:focus-visible {
@@ -154,12 +157,17 @@
   text-transform: uppercase;
 }
 
+.conversation-shell {
+  margin: 3px 0;
+}
+
 .conversation-item {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 42px;
-  margin: 3px 0;
+  width: 100%;
+  min-width: 0;
   padding: 0 11px;
   color: rgba(232, 238, 247, 0.68);
   background: transparent;
@@ -189,6 +197,13 @@
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.conversation-item.editing {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+  cursor: default;
+}
+
 .conv-icon {
   flex: 0 0 18px;
   color: rgba(232, 238, 247, 0.56);
@@ -206,34 +221,121 @@
   white-space: nowrap;
 }
 
-.conversation-delete {
+.conversation-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.conversation-item:hover .conversation-actions,
+.conversation-item.active .conversation-actions,
+.conversation-actions:focus-within {
+  opacity: 1;
+}
+
+.conversation-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  margin-left: auto;
+  flex: 0 0 23px;
+  width: 23px;
+  height: 23px;
   color: rgba(232, 238, 247, 0.56);
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease;
 }
 
-.conversation-item:hover .conversation-delete,
-.conversation-item.active .conversation-delete,
-.conversation-delete:focus-visible {
-  opacity: 1;
-}
-
-.conversation-delete:hover {
+.conversation-action:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.08);
+}
+
+.conversation-action.danger:hover {
+  color: #ffd5d2;
+  background: rgba(180, 35, 24, 0.16);
+}
+
+.conversation-rename-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-rename-form input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(155, 224, 232, 0.36);
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.conversation-rename-form button,
+.conversation-confirm button {
+  height: 28px;
+  padding: 0 8px;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.conversation-rename-form button:hover,
+.conversation-confirm button:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.conversation-rename-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.conversation-confirm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 2px 7px;
+  padding: 8px 9px;
+  color: rgba(255, 213, 210, 0.86);
+  background: rgba(180, 35, 24, 0.1);
+  border: 1px solid rgba(255, 213, 210, 0.12);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.conversation-confirm span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-confirm .confirm-danger {
+  color: #ffffff;
+  background: rgba(180, 35, 24, 0.72);
+  border-color: rgba(255, 213, 210, 0.18);
+}
+
+.conversation-confirm .confirm-danger:hover {
+  background: rgba(180, 35, 24, 0.9);
 }
 
 .sidebar-footer {
@@ -314,7 +416,8 @@
 .sidebar.collapsed .new-chat-btn span,
 .sidebar.collapsed .list-title,
 .sidebar.collapsed .conv-title,
-.sidebar.collapsed .conversation-delete,
+.sidebar.collapsed .conversation-actions,
+.sidebar.collapsed .conversation-confirm,
 .sidebar.collapsed .user-info {
   display: none;
 }
@@ -345,6 +448,10 @@
 
 .sidebar.collapsed .conversation-item {
   padding: 0;
+}
+
+.sidebar.collapsed .conversation-shell {
+  margin: 3px 0;
 }
 
 .chat-page {
@@ -766,7 +873,8 @@
   .sidebar .new-chat-btn span,
   .sidebar .list-title,
   .sidebar .conv-title,
-  .sidebar .conversation-delete,
+  .sidebar .conversation-actions,
+  .sidebar .conversation-confirm,
   .sidebar .user-info {
     display: none;
   }
